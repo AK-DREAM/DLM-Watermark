@@ -68,3 +68,17 @@ For more information, please refer to `src/dlm_watermark/configs.py`.
 ## Evaluation
 
 We provide bash scripts in `scripts/bash` to reproduce our main experiments and all needed scripts are in the `scripts` folder.
+
+## Citation
+
+```
+@misc{gloaguen2025watermarkingdiffusionlanguagemodels,
+      title={Watermarking Diffusion Language Models}, 
+      author={Thibaud Gloaguen and Robin Staab and Nikola Jovanović and Martin Vechev},
+      year={2025},
+      eprint={2509.24368},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2509.24368}, 
+}
+```
