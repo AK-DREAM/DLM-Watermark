@@ -10,6 +10,7 @@ class WatermarkType(StrEnum):
     AAR = "AAR"
     ORDER_AGNOSTIC = "OrderAgnostic"
     UNIGRAM = "Unigram" 
+    BDLM = "BDLM"
 
 class NoWatermarkConfiguration(BaseModel):
     """
@@ -133,6 +134,23 @@ class KGWConfiguration(BaseModel):
         print(f"Convolution Kernel: {self.convolution_kernel}")
         print(f"Seeding Scheme: {self.seeding_scheme}")
 
+class BDLMConfiguration(BaseModel):
+    delta: float = Field(default=2.0, description="Logits boosting factor.")
+    gamma: float = Field(default=0.25, description="Percentage of green tokens.")
+    offset: int = Field(default=32, description="Offset for the watermark.")
+    context_len: int = Field(default=32, description="Context length for the watermark.")
+    topk: int = Field(default=40, description="Number of candidate tokens to consider.")
+
+    def short_summary(self):
+        """
+        Print a short summary of the Unigram watermark configuration
+        """
+        print(f"Delta: {self.delta}")
+        print(f"Gamma: {self.gamma}")
+        print(f"Offset: {self.offset}")
+        print(f"Context Length: {self.context_len}")
+        print(f"TopK: {self.topk}")
+
 class KTHConfiguration(BaseModel):
     key_len: int = Field(default=16, description="Length of the key for KTH watermark.")
     seed: int = Field(default=42, description="Seed for KTH watermark generation.")
@@ -201,7 +219,7 @@ class EvaluationConfiguration(BaseModel):
 
     # PPL evaluation
     ppl_model_name: Optional[str] = Field(
-        default="Qwen/Qwen2.5-32B-Instruct",
+        default="Qwen/Qwen3-8B",
         description="Model name for perplexity evaluation.",
     )
     ppl_batch_size: int = Field(
@@ -291,6 +309,7 @@ class MainConfiguration(BaseModel):
         AARConfiguration,
         OrderAgnosticConfiguration,
         UnigramConfiguration,
+        BDLMConfiguration,
     ] = Field(..., description="Parameters for the chosen watermark algorithm.")
 
     @field_validator("watermark_config", mode="before")
@@ -310,6 +329,7 @@ class MainConfiguration(BaseModel):
             WatermarkType.AAR: AARConfiguration,
             WatermarkType.ORDER_AGNOSTIC: OrderAgnosticConfiguration,
             WatermarkType.UNIGRAM: UnigramConfiguration,
+            WatermarkType.BDLM: BDLMConfiguration,
         }
         ModelCls = dispatch_map.get(wt)
         if ModelCls is None:

@@ -19,12 +19,14 @@ def _load_model(model_config: ModelConfiguration, tokenizer_only: bool = False):
     else:
         model = AutoModel.from_pretrained(
             model_config.model_name,
+            cache_dir="./LLaDA-8B-Instruct",
             torch_dtype=torch_dtype,
             device_map=model_config.device_map,
             trust_remote_code=model_config.trust_remote_code,
         )
     tokenizer = AutoTokenizer.from_pretrained(
         model_config.tokenizer_name,
+        cache_dir="./LLaDA-8B-Instruct",
         trust_remote_code=model_config.trust_remote_code,
         padding_side='left'
     )

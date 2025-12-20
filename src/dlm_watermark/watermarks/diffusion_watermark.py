@@ -457,6 +457,8 @@ class OurWatermark(Watermark):
                                         scale=np.exp(mu_S))
 
         out = {
+            "total_tokens": int(np.sum(repetition_mask)),
+            "total_green": int(np.sum(token_scores * repetition_mask)),
             "z_score": float(statistic),
             "p_value": float(p_value),
             "token_color": token_scores.tolist(),

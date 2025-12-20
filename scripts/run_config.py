@@ -1,3 +1,8 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
 from dlm_watermark.configs import MainConfiguration
 from dlm_watermark.watermarks.watermark_factory import load_watermark_from_config
 from dlm_watermark.watermark_eval import Evaluator

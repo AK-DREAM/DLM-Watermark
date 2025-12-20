@@ -3,6 +3,7 @@ from .diffusion_watermark import OurWatermark
 from .aar import AARWatermark
 from .order_agnostic import OrderAgnosticWatermark
 from .unigram import UnigramWatermark
+from .bdlm import BDLMWatermark
 from ..configs import (
     WatermarkType,
     KGWConfiguration,
@@ -11,6 +12,7 @@ from ..configs import (
     AARConfiguration,
     OrderAgnosticConfiguration,
     UnigramConfiguration,
+    BDLMConfiguration,
 )
 from transformers import AutoTokenizer
 from typing import Union, TYPE_CHECKING
@@ -90,6 +92,16 @@ def load_watermark_from_config(
             gamma=config.gamma,
             tokenizer=tokenizer,
             seed=config.seed,
+        )
+
+    elif watermark_type.value == "BDLM":
+        return BDLMWatermark(
+            gamma=config.gamma,
+            delta=config.delta,
+            offset=config.offset,
+            context_len=config.context_len,
+            topk=config.topk,
+            tokenizer=tokenizer,
         )
     else:
         raise NotImplementedError(

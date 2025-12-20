@@ -175,14 +175,15 @@ class Evaluator:
                 else:
                     detection_output = watermark.detect(input_ids=sequences)
                 
-                line = {
+                line = {}
+                line.update(detection_output)
+                line.update({
                     "prompt": prompt[batch_idx],
                     "completion": completion[batch_idx],
                     "dataset_name": dataset_name,
                     "ages": generation_output.ages[batch_idx].detach().cpu().tolist(),
                     "length": len(encoded_completion[batch_idx]), 
-                }
-                line.update(detection_output)
+                })
                 
                 res.append(line)
                 
