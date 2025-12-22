@@ -350,7 +350,7 @@ class Evaluator:
             # Evaluate the watermark
             inputs = tokenizer(completion, return_tensors="pt", padding=True)
             inputs = {k: v.to(device) for k, v in inputs.items()}
-            detection_output = watermark.detect(**inputs, pvalues_only=False, detailed_output=True)
+            detection_output = watermark.detect(**inputs)
             results.append(detection_output)
             
         res_df = pd.DataFrame(results)

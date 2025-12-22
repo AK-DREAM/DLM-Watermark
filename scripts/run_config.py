@@ -25,7 +25,7 @@ def main():
     args = parse_args()
     config = MainConfiguration(**yaml.safe_load(open(args.config, "r")))
     
-    config.evaluation_config.save_path = f"{args.output_path}/results.json"
+    config.evaluation_config.save_path = f"{args.output_path}/results_base_watermark.jsonl"
     print(config.short_summary())
 
     additional_info = {

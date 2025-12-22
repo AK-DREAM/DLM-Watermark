@@ -1,3 +1,6 @@
 .DS_Store
 LLaDA-8B-Instruct
+Qwen3-8B
 __pycache__
+outputs
+plots

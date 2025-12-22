@@ -12,9 +12,9 @@ def _load_ppl_model(ppl_model_name):
     """Load a perplexity model."""
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = AutoModelForCausalLM.from_pretrained(ppl_model_name, torch_dtype=torch.bfloat16).to(device)
+    model = AutoModelForCausalLM.from_pretrained(ppl_model_name, cache_dir="./Qwen3-8B", torch_dtype=torch.bfloat16).to(device)
     model.eval()
-    tokenizer = AutoTokenizer.from_pretrained(ppl_model_name)
+    tokenizer = AutoTokenizer.from_pretrained(ppl_model_name, cache_dir="./Qwen3-8B")
     
     return model, tokenizer
 

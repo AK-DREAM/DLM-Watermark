@@ -1,3 +1,8 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
 from dlm_watermark.configs import MainConfiguration
 from dlm_watermark.watermarks.watermark_factory import load_watermark_from_config
 from dlm_watermark.models.model_factory import load_model
@@ -27,6 +32,8 @@ def main():
     
     default_config = args.config 
     config = MainConfiguration(**yaml.safe_load(open(default_config, "r")))
+
+    config.evaluation_config.save_path = f"outputs/eval.json"
     
     if args.overwrite:
         config.evaluation_config.skip_if_exists = False

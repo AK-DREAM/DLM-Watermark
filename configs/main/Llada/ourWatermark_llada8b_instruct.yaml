@@ -23,7 +23,7 @@ watermark_config:
   seeding_scheme: "sumhash"
   greenlist_type: "bernoulli"
   greenlist_params:
-    gamma: 0.25
+    gamma: 0.5
 
 evaluation_config:
   num_samples: 200
