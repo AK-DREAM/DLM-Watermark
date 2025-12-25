@@ -25,7 +25,7 @@ def main():
     args = parse_args()
     config = MainConfiguration(**yaml.safe_load(open(args.config, "r")))
     
-    config.evaluation_config.save_path = f"{args.output_path}/results_base_watermark.jsonl"
+    config.evaluation_config.save_path = f"{args.output_path}/results_ours_pos_new.jsonl"
     print(config.short_summary())
 
     additional_info = {
@@ -37,7 +37,7 @@ def main():
     evaluator = Evaluator(config=config.evaluation_config)
     
     model, tokenizer = load_model(config.model_configuration, tokenizer_only=False)
-    watermark = load_watermark_from_config(config=config.watermark_config, tokenizer=tokenizer, watermark_type=config.watermark_type)
+    watermark = load_watermark_from_config(config=config.watermark_config, tokenizer=tokenizer, watermark_type=config.watermark_type, device=config.model_configuration.device_map)
     evaluator.evaluate_watermark(model,tokenizer,watermark, additional_info=additional_info)
 
 

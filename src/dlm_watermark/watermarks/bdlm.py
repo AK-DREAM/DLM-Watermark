@@ -25,10 +25,10 @@ class BDLMWatermark(Watermark):
         self._initialize_fixed_table()
 
     def _initialize_fixed_table(self):
-        rng = torch.Generator(device=torch.device("cuda"))
+        rng = torch.Generator(device=self.device)
         rng.manual_seed(2971215073)  # fib47 is prime
         self.table_size = 1_000_003
-        self.fixed_table = torch.randperm(1_000_003, device=torch.device("cuda"), generator=rng)
+        self.fixed_table = torch.randperm(1_000_003, device=self.device, generator=rng)
 
     def _hash_tensor(self, x: torch.LongTensor) -> torch.LongTensor:
         indices = x % self.table_size
@@ -43,12 +43,14 @@ class BDLMWatermark(Watermark):
         full_seq: torch.LongTensor, # [B, L]
         candidates: torch.LongTensor, # [B, L, num_candidates]
         salt_key: int = 15485863,
+        mask_id: int = 126336,
     ): 
         B, L = full_seq.shape
+        # pad seq with zeros
         padded_seq = torch.cat(
-            [torch.zeros((B, self.context_len - 1), dtype=full_seq.dtype, device=full_seq.device), full_seq],
+            [torch.zeros((B, self.offset + self.context_len - 1), dtype=full_seq.dtype, device=full_seq.device), full_seq],
             dim=-1,
-        ) # [B, L + context_len - 1]
+        )[:, :-self.offset] # [B, context_len - 1 + L]
 
         # sliding window to get contexts
         contexts = padded_seq.unfold(dimension=1, size=self.context_len, step=1) # [B, L, context_len]

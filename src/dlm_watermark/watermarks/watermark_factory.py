@@ -32,6 +32,7 @@ def load_watermark_from_config(
     ],
     tokenizer: AutoTokenizer,
     watermark_type: WatermarkType,
+    device: str = "cuda",
 ) -> "Watermark":
 
     if watermark_type.value == "KGW":
@@ -102,6 +103,7 @@ def load_watermark_from_config(
             context_len=config.context_len,
             topk=config.topk,
             tokenizer=tokenizer,
+            device=device,
         )
     else:
         raise NotImplementedError(

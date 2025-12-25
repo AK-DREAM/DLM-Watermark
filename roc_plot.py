@@ -8,7 +8,7 @@ import math
 # 第一个方法 (Baseline A)
 method1_config = {
     "name": "BDLM-Watermark (Ours)",
-    "pos_file": "outputs/results_ours_pos.jsonl",
+    "pos_file": "outputs/results_ours_pos_new.jsonl",
     "neg_file": "outputs/results_ours_neg.jsonl",
     "color": "tab:red"
 }
