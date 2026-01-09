@@ -19,6 +19,7 @@ watermark_config:
   gamma: 0.5
   offset: 25
   context_len: 25
+# (i-offset-context_len, i-offset]
   topk: 40
 
 evaluation_config:
