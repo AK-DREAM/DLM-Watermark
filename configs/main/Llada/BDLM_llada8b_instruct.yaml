@@ -35,4 +35,9 @@ evaluation_config:
       chat: true
       max_length: 150
       min_length: 1
+    - path: data/WaterBench/5-1_alpacafarm.jsonl
+      user_prompt: "You are a helpful assistant, please answer the following instruction: \n{context}\n{input}"
+      chat: true
+      max_length: 150
+      min_length: 1
   tqdm: true
