@@ -23,15 +23,25 @@ from transformers import (
 from tqdm import tqdm
 import nltk
 from typing import Optional
-from openai import OpenAI
+# from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor  # Added for parallelization
  
 
-client = OpenAI(api_key=os.getenv("TRANSLATION_API_KEY"))
+# client = OpenAI(api_key=os.getenv("TRANSLATION_API_KEY"))
 
 TRANSLATION_API_KEY = os.getenv("TRANSLATION_API_KEY")
 
-nltk.download("punkt_tab")
+# nltk.download("punkt_tab")
+try:
+    # 尝试加载一下，看坏没坏
+    nltk.data.find('tokenizers/punkt_tab')
+except LookupError:
+    print("Downloading punkt_tab...")
+    nltk.download("punkt_tab")
+except Exception:
+    # 如果文件损坏，可能报其他错，强制重下
+    print("Corrupted NLTK data detected. Re-downloading...")
+    nltk.download("punkt_tab", force=True)
 
 def parallel_paraphrase(paraphraser, texts, max_workers=128, desc="Paraphrasing"):
     """Paraphrase a list of texts in parallel.
@@ -82,78 +92,78 @@ class OriginalTextEditor:
     def edit(self, text, *args, **kwargs):
         return text
     
-class GPTParaphraser(TextEditor):
-    """Paraphrase a text using the GPT model."""
+# class GPTParaphraser(TextEditor):
+#     """Paraphrase a text using the GPT model."""
 
-    def __init__(self, prompt: str) -> None:
-        """
-            Initialize the GPT paraphraser.
+#     def __init__(self, prompt: str) -> None:
+#         """
+#             Initialize the GPT paraphraser.
 
-            Parameters:
-                openai_model (str): The OpenAI model to use for paraphrasing.
-                prompt (str): The prompt to use for paraphrasing.
-        """
-        self.prompt = prompt
+#             Parameters:
+#                 openai_model (str): The OpenAI model to use for paraphrasing.
+#                 prompt (str): The prompt to use for paraphrasing.
+#         """
+#         self.prompt = prompt
 
-        client = OpenAI()
-        self.client = client
+#         client = OpenAI()
+#         self.client = client
 
-    def edit(self, text: str, reference=None):
-        """Paraphrase the text using the GPT model."""
+#     def edit(self, text: str, reference=None):
+#         """Paraphrase the text using the GPT model."""
 
-        response = self.client.responses.create(
-            model="gpt-5-mini-2025-08-07",
-            input= self.prompt + text,
-        )
-        return response.output_text
+#         response = self.client.responses.create(
+#             model="gpt-5-mini-2025-08-07",
+#             input= self.prompt + text,
+#         )
+#         return response.output_text
 
-class OpenAITranslatorProvider:
-    """
-    class that wraps functions, which use the ChatGPT
-    under the hood to translate word(s)
-    """
+# class OpenAITranslatorProvider:
+#     """
+#     class that wraps functions, which use the ChatGPT
+#     under the hood to translate word(s)
+#     """
 
-    def __init__(
-        self,
-        source: str = "auto",
-        target: str = "english",
-        api_key: Optional[str] = None,
-        model: Optional[str] = "gpt-5-nano-2025-08-07",
-        **kwargs,
-    ):
-        """
-        @param api_key: your openai api key.
-        @param source: source language
-        @param target: target language
-        """
+#     def __init__(
+#         self,
+#         source: str = "auto",
+#         target: str = "english",
+#         api_key: Optional[str] = None,
+#         model: Optional[str] = "gpt-5-nano-2025-08-07",
+#         **kwargs,
+#     ):
+#         """
+#         @param api_key: your openai api key.
+#         @param source: source language
+#         @param target: target language
+#         """
 
-        self.api_key = api_key
-        self.model = model
+#         self.api_key = api_key
+#         self.model = model
 
-        self.source = source
-        self.target = target
+#         self.source = source
+#         self.target = target
 
-    def translate(self, text: str, **kwargs) -> str:
-        """
-        @param text: text to translate
-        @return: translated text
-        """
+#     def translate(self, text: str, **kwargs) -> str:
+#         """
+#         @param text: text to translate
+#         @return: translated text
+#         """
 
 
-        prompt = f"Translate the text below into {self.target}.\n"
-        prompt += f'Text: "{text}"'
+#         prompt = f"Translate the text below into {self.target}.\n"
+#         prompt += f'Text: "{text}"'
 
-        response = client.chat.completions.create(model=self.model,
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ])
+#         response = client.chat.completions.create(model=self.model,
+#         messages=[
+#             {
+#                 "role": "user",
+#                 "content": prompt,
+#             }
+#         ])
 
-        translated_text = response.choices[0].message.content
+#         translated_text = response.choices[0].message.content
 
-        return translated_text
+#         return translated_text
 
 DELETIONS = [0.1, 0.2, 0.3, 0.4, 0.5]
 SUBSTITUTIONS = [0.1, 0.2, 0.3, 0.4, 0.5]
@@ -261,16 +271,16 @@ def main():
             for substitution in SUBSTITUTIONS
         ]
         attacks["ca-substitution"] = ca_substitutions
-    if args.gpt_paraphraser:
-        gpt_paraphrasers = [
-            (
-                GPTParaphraser(
-                    prompt="Please rewrite the following text: ",
-                ),
-                {"parameter": None},
-            )
-        ]
-        attacks["gpt-paraphraser"] = gpt_paraphrasers
+    # if args.gpt_paraphraser:
+    #     gpt_paraphrasers = [
+    #         (
+    #             GPTParaphraser(
+    #                 prompt="Please rewrite the following text: ",
+    #             ),
+    #             {"parameter": None},
+    #         )
+    #     ]
+    #     attacks["gpt-paraphraser"] = gpt_paraphrasers
 
     if args.dipper_paraphraser:
         dipper_paraphrasers = [
@@ -296,21 +306,21 @@ def main():
         ]
         attacks["dipper-paraphraser"] = dipper_paraphrasers
 
-    if args.translation:
-        translators = [
-            (
-                BackTranslationTextEditor(
-                    translate_to_intermediary=OpenAITranslatorProvider(
-                        source="en", target="zh", api_key=TRANSLATION_API_KEY
-                    ).translate,
-                    translate_to_source=OpenAITranslatorProvider(
-                        source="zh", target="en", api_key=TRANSLATION_API_KEY
-                    ).translate,
-                ),
-                {"parameter": None},
-            )
-        ]
-        attacks["back-translation"] = translators
+    # if args.translation:
+    #     translators = [
+    #         (
+    #             BackTranslationTextEditor(
+    #                 translate_to_intermediary=OpenAITranslatorProvider(
+    #                     source="en", target="zh", api_key=TRANSLATION_API_KEY
+    #                 ).translate,
+    #                 translate_to_source=OpenAITranslatorProvider(
+    #                     source="zh", target="en", api_key=TRANSLATION_API_KEY
+    #                 ).translate,
+    #             ),
+    #             {"parameter": None},
+    #         )
+    #     ]
+    #     attacks["back-translation"] = translators
 
 
     n_iteration = len(attacks) * len(paths)
@@ -373,8 +383,13 @@ def main():
                         inputs = tokenizer(edited_completion, return_tensors="pt")
                         inputs = {k: v.to(device) for k, v in inputs.items()}
 
-                        convolution_kernel = eval(inf["convolution_kernel"])
-                        watermark.update_conv_kernel(convolution_kernel)
+                        # convolution_kernel = eval(inf["convolution_kernel"])
+                        # watermark.update_conv_kernel(convolution_kernel)
+                        if "convolution_kernel" in inf:
+                             convolution_kernel = eval(inf["convolution_kernel"])
+                             # 只有当 watermark 对象有这个方法时才调用
+                             if hasattr(watermark, "update_conv_kernel"):
+                                 watermark.update_conv_kernel(convolution_kernel)
 
                         detection_output = watermark.detect(
                             **inputs,
@@ -386,10 +401,12 @@ def main():
                             pvalue = None
                         else:
                             pvalue = detection_output["p_value"]
+                            z_score = detection_output["z_score"]
                             lines.append(
                                 {
                                     **inf,  # Unpack the info columns
                                     "p_value": pvalue,
+                                    "z_score": z_score,
                                     "attack_name": attack_name,
                                     "attack_params": params,
                                 }
@@ -410,9 +427,22 @@ def main():
                         edited_completion = attack.edit(completion, prompt)
                         inputs = tokenizer(edited_completion, return_tensors="pt")
                         inputs = {k: v.to(device) for k, v in inputs.items()}
+                        # ----- 新增：检查输入长度 -----
+                        seq_len = inputs["input_ids"].shape[-1]
+                        # BDLM 的 context_len 通常是 32 或 25，保险起见设个阈值
+                        # 如果长度甚至小于 2，肯定跑不动
+                        if seq_len < 2: 
+                            if args.verbose:
+                                print(f"Skipping too short text (len={seq_len}): {edited_completion}")
+                            continue # 或者你可以记录一个无效结果
+                        # ---------------------------
 
-                        convolution_kernel = eval(inf["convolution_kernel"])
-                        watermark.update_conv_kernel(convolution_kernel)
+                        # convolution_kernel = eval(inf["convolution_kernel"])
+                        # watermark.update_conv_kernel(convolution_kernel)
+                        if "convolution_kernel" in inf:
+                             convolution_kernel = eval(inf["convolution_kernel"])
+                             if hasattr(watermark, "update_conv_kernel"):
+                                 watermark.update_conv_kernel(convolution_kernel)
 
                         detection_output = watermark.detect(
                             **inputs,
@@ -424,10 +454,12 @@ def main():
                             pvalue = None
                         else:
                             pvalue = detection_output["p_value"]
+                            z_score = detection_output.get("z_score", None)
                             lines.append(
                                 {
                                     **inf,  # Unpack the info columns
                                     "p_value": pvalue,
+                                    "z_score": z_score,
                                     "attack_name": attack_name,
                                     "attack_params": params,
                                 }
