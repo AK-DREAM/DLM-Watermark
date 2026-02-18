@@ -2,6 +2,7 @@ from dlm_watermark.configs import MainConfiguration
 from dlm_watermark.watermarks.watermark_factory import load_watermark_from_config
 from dlm_watermark.watermark_eval import Evaluator
 from dlm_watermark.models.model_factory import load_model
+from dlm_watermark.utils.file_io import resolve_output_path
 import yaml
 import argparse
 import json
@@ -46,10 +47,10 @@ def main():
     default_config = args.config
     config = MainConfiguration(**yaml.safe_load(open(default_config, "r")))
     
-    config.evaluation_config.save_path = f"output/{args.name}/watermark_ablation.jsonl"
+    config.evaluation_config.save_path = resolve_output_path(f"output/{args.name}/watermark_ablation.jsonl")
     config.evaluation_config.num_samples = args.num_samples if args.num_samples is not None else config.evaluation_config.num_samples
     if delta==0:
-        config.evaluation_config.save_path = f"output/{args.name}/watermark_ablation_no_watermark.jsonl"
+        config.evaluation_config.save_path = resolve_output_path(f"output/{args.name}/watermark_ablation_no_watermark.jsonl")
     
     if config.watermark_type.value == "None":
         print("No watermark type specified -- evaluating without watermark.")

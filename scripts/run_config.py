@@ -7,6 +7,7 @@ from dlm_watermark.configs import MainConfiguration
 from dlm_watermark.watermarks.watermark_factory import load_watermark_from_config
 from dlm_watermark.watermark_eval import Evaluator
 from dlm_watermark.models.model_factory import load_model
+from dlm_watermark.utils.file_io import resolve_output_path
 import yaml
 import argparse
 
@@ -25,7 +26,7 @@ def main():
     args = parse_args()
     config = MainConfiguration(**yaml.safe_load(open(args.config, "r")))
     
-    config.evaluation_config.save_path = f"{args.output_path}/results_ours_pos_new.jsonl"
+    config.evaluation_config.save_path = resolve_output_path(f"{args.output_path}/results_ours_pos_new.jsonl")
     print(config.short_summary())
 
     additional_info = {

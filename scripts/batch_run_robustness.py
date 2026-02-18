@@ -1,12 +1,16 @@
 import os
-import glob
-import subprocess
 import sys
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+import glob
+import subprocess
+from dlm_watermark.utils.file_io import resolve_output_path
+
 def main():
-    # 定义目录路径
-    output_dir = "outputs_ulti"
-    config_dir = "configs_ulti"
+    # 定义目录路径（受 WATERMARK_OUTPUT_BASE_DIR 环境变量控制）
+    output_dir = resolve_output_path("outputs_ulti")
+    config_dir = resolve_output_path("configs_ulti")
 
     # 1. 检查目录是否存在
     if not os.path.exists(output_dir):

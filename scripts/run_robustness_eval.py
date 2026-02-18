@@ -1,6 +1,7 @@
 from dlm_watermark.configs import MainConfiguration
 from dlm_watermark.watermarks.watermark_factory import load_watermark_from_config
 from dlm_watermark.models.model_factory import load_model
+from dlm_watermark.utils.file_io import safe_write_df_csv
 import yaml
 import argparse
 import glob
@@ -477,10 +478,8 @@ def main():
 
             print(f"Saving results for {attack_name} on {save_path}")
             attack_df = pd.DataFrame(attack_res)
-            attack_df.to_csv(
-                save_path,
-                index=False,
-            )
+            # 使用文件锁安全写入 csv，防止多进程并发冲突
+            safe_write_df_csv(save_path, attack_df, index=False)
 
 
 if __name__ == "__main__":

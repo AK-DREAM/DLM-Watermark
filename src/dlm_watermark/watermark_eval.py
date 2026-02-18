@@ -13,6 +13,7 @@ from .configs import EvaluationConfiguration, EvaluationDataset
 from .quality_evaluations.ppl import compute_ppl
 from .quality_evaluations.metrics import compute_seq_rep_n
 from .quality_evaluations.judge import get_gpt4_grades
+from .utils.file_io import file_lock, safe_append_jsonl, safe_write_df_json
 
 
 def get_dataset(dataset_config: EvaluationDataset):
@@ -197,11 +198,8 @@ class Evaluator:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
         except FileNotFoundError:
             pass
-        # Append the results to the file
-        with open(save_path, "a") as f:
-            for result in results:
-                line = self.add_information(result)
-                f.write(json.dumps(line) + "\n")
+        # 使用文件锁安全追加写入，防止多进程并发冲突
+        safe_append_jsonl(save_path, results, transform_fn=self.add_information)
                 
     def skip_if_exists(self, dataset_name):
         if not self.config.skip_if_exists:
@@ -293,27 +291,30 @@ class Evaluator:
 
     def evaluate_ppl(self):
         
-        df = self.load_data_from_path()
-        
-        mask = [True] * len(df)
-        if self.config.skip_if_exists:
-            if "ppl" in df.columns:
-                if not df["ppl"].isnull().any():
-                    print("PPL already evaluated. Skipping.")
-                    return
-                else:
-                    mask = df["ppl"].isnull()
-        masked_df = df[mask].copy()
+        # 使用文件锁保护整个读-改-写过程
+        with file_lock(self.config.save_path):
+            df = self.load_data_from_path()
+            
+            mask = [True] * len(df)
+            if self.config.skip_if_exists:
+                if "ppl" in df.columns:
+                    if not df["ppl"].isnull().any():
+                        print("PPL already evaluated. Skipping.")
+                        return
+                    else:
+                        mask = df["ppl"].isnull()
+            masked_df = df[mask].copy()
 
-        prompts = masked_df["prompt"].tolist()
-        completions = masked_df["completion"].tolist()
+            prompts = masked_df["prompt"].tolist()
+            completions = masked_df["completion"].tolist()
+        
         ppls = self._evaluate_ppl(prompts, completions)
         masked_df["ppl"] = ppls
 
         if "ppl" not in df.columns:
             df["ppl"] = pd.NA             
         df.update(masked_df)
-        df.to_json(self.config.save_path, lines=True, orient="records")
+        safe_write_df_json(self.config.save_path, df)
 
     def _evaluate_ppl(self, prompts, completions):
         return compute_ppl(
@@ -325,20 +326,23 @@ class Evaluator:
         
     def evaluate_repetition(self, tokenizer):
         
-        df = self.load_data_from_path()
-        completions = df["completion"].tolist()
+        with file_lock(self.config.save_path):
+            df = self.load_data_from_path()
+            completions = df["completion"].tolist()
         
         n_grams = [1,2,3]
         for n in n_grams:
             seq_rep_n = compute_seq_rep_n(completions, tokenizer, n=n)
             df[f"seq_rep_{n}"] = seq_rep_n
 
-        df.to_json(self.config.save_path, lines=True, orient="records")
+        safe_write_df_json(self.config.save_path, df)
         
     def evaluate_watermark_detection(self, tokenizer, watermark):
         
-        df = self.load_data_from_path()
-        completions = df["completion"].tolist()
+        with file_lock(self.config.save_path):
+            df = self.load_data_from_path()
+            completions = df["completion"].tolist()
+        
         device = watermark.device
         
         if tokenizer.pad_token is None:
@@ -359,11 +363,12 @@ class Evaluator:
         for col in res_df_columns:
             df[col] = res_df[col].tolist()
 
-        df.to_json(self.config.save_path, lines=True, orient="records")
+        safe_write_df_json(self.config.save_path, df)
 
     def evaluate_gpt4_judge(self):
         
-        df = self.load_data_from_path()
+        with file_lock(self.config.save_path):
+            df = self.load_data_from_path()
         
         if "gpt4_judge" in df.columns and not df["gpt4_judge"].isnull().all():
             print("GPT-4 evaluation already exists. Skipping.")
@@ -396,4 +401,4 @@ class Evaluator:
             
         df["gpt4_judge"] = scores
 
-        df.to_json(self.config.save_path, lines=True, orient="records")
+        safe_write_df_json(self.config.save_path, df)
