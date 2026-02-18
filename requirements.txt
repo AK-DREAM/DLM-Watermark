@@ -101,8 +101,8 @@ stack-data==0.6.3
 sympy==1.14.0
 threadpoolctl==3.6.0
 tokenizers==0.22.1
-torch==2.9.1+cu128
-torchvision==0.24.1+cu128
+torch==2.9.1
+torchvision==0.24.1
 tornado==6.5.4
 tqdm==4.67.1
 traitlets==5.14.3
