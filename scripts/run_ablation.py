@@ -146,6 +146,22 @@ EXPERIMENT_MATRIX: Dict[str, Dict[str, Any]] = {
         "coupled_overrides": {},
         "defaults": {"num_samples": 200},
     },
+
+    # --- main experiment: （仅 LLaDA） ---
+    "test_uni_dlm_bdlm": {
+        "model_layers": [os.path.abspath(os.path.join(DECOUPLED_BASE, "models", "llada_8b.yaml"))],
+        "watermark": "__multi__",
+        "_watermark_list": [
+            os.path.abspath(os.path.join(DECOUPLED_BASE, "watermarks", w))
+            for w in ["dlm.yaml", "bdlm.yaml", "unigram.yaml"]
+        ],
+        "dataset_layers": auto_discover(os.path.join(DECOUPLED_BASE, "datasets")),
+        "sweep": {
+            "watermark_config.delta": [2],
+        },
+        "coupled_overrides": {},
+        "defaults": {"num_samples": 200},
+    }
 }
 
 
