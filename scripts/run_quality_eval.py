@@ -8,13 +8,17 @@ from dlm_watermark.watermarks.watermark_factory import load_watermark_from_confi
 from dlm_watermark.models.model_factory import load_model
 from dlm_watermark.watermark_eval import Evaluator
 from dlm_watermark.utils.file_io import resolve_output_path
+from dlm_watermark.utils.config_utils import load_config
 import yaml
 import argparse
 import glob
 
 def parse_args():
     
-    parser = argparse.ArgumentParser(description="Ablate generation parameters")
+    parser = argparse.ArgumentParser(description="Run quality evaluation on generated results")
+    parser.add_argument("--config", type=str, default=None, help="Path to monolithic configuration file")
+    parser.add_argument("--layers", type=str, nargs="*", default=None, help="Paths to decoupled config layer files to merge")
+    parser.add_argument("--override", action="append", default=[], help="Dot-notation override, e.g. 'watermark_config.delta=3.0'")
     parser.add_argument("--path", type=str, help="Path to the data to evaluate")
     parser.add_argument("--paths", type=str, help="Path to the folder to evaluate")
     parser.add_argument("--pval", action="store_true", help="Evaluate watermark detection")
@@ -22,7 +26,6 @@ def parse_args():
     parser.add_argument("--rep", action="store_true", help="Evaluate repetition")
     parser.add_argument("--gpt", action="store_true", help="Use GPT-4 as a judge")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing results")
-    parser.add_argument("--config", type=str, help="Path to the config")
     args = parser.parse_args()
     return args
 
@@ -31,8 +34,11 @@ def main():
     
     args = parse_args()
     
-    default_config = args.config 
-    config = MainConfiguration(**yaml.safe_load(open(default_config, "r")))
+    config = load_config(
+        base=args.config,
+        layers=args.layers,
+        overrides=list(args.override) if args.override else None,
+    )
 
     config.evaluation_config.save_path = resolve_output_path("outputs/eval.json")
     

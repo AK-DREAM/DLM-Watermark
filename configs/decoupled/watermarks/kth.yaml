@@ -1,0 +1,4 @@
+# KTH 水印配置
+watermark_type: KTH
+watermark_config:
+  key_len: 200

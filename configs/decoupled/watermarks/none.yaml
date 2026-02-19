@@ -1,0 +1,3 @@
+# 无水印配置（用于baseline PPL评估）
+watermark_type: None
+watermark_config:

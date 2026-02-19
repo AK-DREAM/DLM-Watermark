@@ -1,0 +1,5 @@
+# OrderAgnostic 水印配置
+watermark_type: OrderAgnostic
+watermark_config:
+  delta: 2.0
+  l: 2

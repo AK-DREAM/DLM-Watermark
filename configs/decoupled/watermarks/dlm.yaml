@@ -1,0 +1,12 @@
+# DLM (Ours) 水印配置
+watermark_type: Ours
+watermark_config:
+  delta: 2.0
+  enforce_kl: false
+  convolution_kernel: [-1]
+  topk: 50
+  n_iter: 1
+  seeding_scheme: "sumhash"
+  greenlist_type: "bernoulli"
+  greenlist_params:
+    gamma: 0.5

@@ -1,0 +1,4 @@
+# AAR 水印配置
+watermark_type: AAR
+watermark_config:
+  convolution_kernel: [-1,-2,-3,-4]

@@ -7,6 +7,14 @@ from .file_io import (
     safe_write_df_csv,
 )
 
+from .config_utils import (
+    deep_merge,
+    merge_yaml_files,
+    apply_overrides,
+    auto_discover,
+    load_config,
+)
+
 __all__ = [
     "get_output_base_dir",
     "resolve_output_path",
@@ -14,4 +22,9 @@ __all__ = [
     "safe_append_jsonl",
     "safe_write_df_json",
     "safe_write_df_csv",
+    "deep_merge",
+    "merge_yaml_files",
+    "apply_overrides",
+    "auto_discover",
+    "load_config",
 ]

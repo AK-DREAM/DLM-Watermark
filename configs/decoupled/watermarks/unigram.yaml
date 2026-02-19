@@ -1,0 +1,6 @@
+# Unigram 水印配置
+watermark_type: Unigram
+watermark_config:
+  delta: 2.0
+  gamma: 0.25
+  seed: 42

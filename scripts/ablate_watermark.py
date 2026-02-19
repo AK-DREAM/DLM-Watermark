@@ -3,6 +3,7 @@ from dlm_watermark.watermarks.watermark_factory import load_watermark_from_confi
 from dlm_watermark.watermark_eval import Evaluator
 from dlm_watermark.models.model_factory import load_model
 from dlm_watermark.utils.file_io import resolve_output_path
+from dlm_watermark.utils.config_utils import load_config
 import yaml
 import argparse
 import json
@@ -10,11 +11,19 @@ import json
 def parse_args():
     
     parser = argparse.ArgumentParser(description="Ablate generation parameters")
-    parser.add_argument("--config", type=str, help="Path to the configuration file")
-    parser.add_argument("--name", type=str, help="Name of the ablation experiment")
+    
+    # --- 配置加载方式（三选一或组合使用） ---
+    parser.add_argument("--config", type=str, default=None, help="Path to a monolithic configuration file (legacy mode)")
+    parser.add_argument("--layers", type=str, nargs="*", default=None, help="Paths to decoupled config layer files to merge (model, watermark, dataset)")
+    parser.add_argument("--override", action="append", default=[], help="Dot-notation override, e.g. 'watermark_config.delta=3.0'. Can be specified multiple times.")
+    
+    # --- 实验命名 ---
+    parser.add_argument("--name", type=str, default=None, help="Name of the ablation experiment (used to construct output path)")
+    
+    # --- 旧版 CLI 参数（向后兼容，内部转为 override） ---
     parser.add_argument("--delta", type=float, default=None, help="Delta value for watermark")
     parser.add_argument("--gamma", type=float, default=None, help="Gamma value for watermark")
-    parser.add_argument("--kernel", type=str, default=None, help="Kernel type for convolution")
+    parser.add_argument("--kernel", type=str, default=None, help="Convolution kernel, e.g. '[-1]'")
     parser.add_argument("--topk", type=int, default=None, help="Top-k value for watermark")
     parser.add_argument("--topk_greenify", type=int, default=None, help="Top-k value for greenify")
     parser.add_argument("--topk_hashes", type=int, default=None, help="Top-k value for hashes")
@@ -37,57 +46,65 @@ def parse_args():
     return args
 
 
+def build_legacy_overrides(args) -> list:
+    """
+    将旧版 CLI 参数转换为 --override 格式，保持向后兼容。
+    只有非 None 的参数才会被转换。
+    """
+    overrides = []
+    
+    if args.delta is not None:
+        overrides.append(f"watermark_config.delta={args.delta}")
+    if args.gamma is not None:
+        overrides.append(f"watermark_config.gamma={args.gamma}")
+    if args.kernel is not None:
+        overrides.append(f"watermark_config.convolution_kernel={args.kernel}")
+    if args.topk is not None:
+        overrides.append(f"watermark_config.topk={args.topk}")
+    if args.n_iter is not None:
+        overrides.append(f"watermark_config.n_iter={args.n_iter}")
+    if args.seeding_scheme is not None:
+        overrides.append(f"watermark_config.seeding_scheme={args.seeding_scheme}")
+    if args.num_samples is not None:
+        overrides.append(f"evaluation_config.num_samples={args.num_samples}")
+    if args.temperature is not None:
+        overrides.append(f"model_configuration.temperature={args.temperature}")
+    if args.enforce_kl:
+        overrides.append("watermark_config.enforce_kl=true")
+    elif args.no_enforce_kl:
+        overrides.append("watermark_config.enforce_kl=false")
+    if args.greenlist_type is not None:
+        overrides.append(f"watermark_config.greenlist_type={args.greenlist_type}")
+    if args.greenlist_params is not None:
+        overrides.append(f"watermark_config.greenlist_params={args.greenlist_params}")
+    
+    return overrides
+
+
 def main():
     
     args = parse_args()
-    delta = args.delta
-    kernel = eval(args.kernel) if args.kernel is not None else None
-    topk = args.topk
     
-    default_config = args.config
-    config = MainConfiguration(**yaml.safe_load(open(default_config, "r")))
+    # 合并旧版CLI参数和显式override
+    legacy_overrides = build_legacy_overrides(args)
+    all_overrides = legacy_overrides + (args.override or [])
     
-    config.evaluation_config.save_path = resolve_output_path(f"output/{args.name}/watermark_ablation.jsonl")
-    config.evaluation_config.num_samples = args.num_samples if args.num_samples is not None else config.evaluation_config.num_samples
-    if delta==0:
-        config.evaluation_config.save_path = resolve_output_path(f"output/{args.name}/watermark_ablation_no_watermark.jsonl")
+    # 统一加载配置
+    config = load_config(
+        base=args.config,
+        layers=args.layers,
+        overrides=all_overrides if all_overrides else None,
+    )
+    
+    # 设置输出路径
+    if args.name:
+        if args.delta == 0:
+            config.evaluation_config.save_path = resolve_output_path(f"output/{args.name}/watermark_ablation_no_watermark.jsonl")
+        else:
+            config.evaluation_config.save_path = resolve_output_path(f"output/{args.name}/watermark_ablation.jsonl")
     
     if config.watermark_type.value == "None":
         print("No watermark type specified -- evaluating without watermark.")
-    elif config.watermark_type.value == "KGW":
-        config.watermark_config.delta = delta if delta is not None else config.watermark_config.delta
-        config.watermark_config.convolution_kernel = kernel if kernel is not None else config.watermark_config.convolution_kernel
-        config.watermark_config.seeding_scheme = args.seeding_scheme if args.seeding_scheme is not None else config.watermark_config.seeding_scheme
-    elif config.watermark_type.value == "Ours":
-        config.watermark_config.delta = delta if delta is not None else config.watermark_config.delta
-        config.watermark_config.convolution_kernel = kernel if kernel is not None else config.watermark_config.convolution_kernel
-        config.watermark_config.topk = topk if topk is not None else config.watermark_config.topk
-        config.watermark_config.n_iter = args.n_iter if args.n_iter is not None else config.watermark_config.n_iter
-        config.watermark_config.seeding_scheme = args.seeding_scheme if args.seeding_scheme is not None else config.watermark_config.seeding_scheme
-        
-        # Handle enforce_kl parameter
-        if args.enforce_kl:
-            config.watermark_config.enforce_kl = True
-        elif args.no_enforce_kl:
-            config.watermark_config.enforce_kl = False
-        
-        # Handle greenlist_type parameter
-        if args.greenlist_type is not None:
-            config.watermark_config.greenlist_type = args.greenlist_type
-        
-        # Handle greenlist_params parameter
-        if args.greenlist_params is not None:
-            try:
-                config.watermark_config.greenlist_params = json.loads(args.greenlist_params)
-            except json.JSONDecodeError:
-                print(f"Warning: Invalid JSON for greenlist_params: {args.greenlist_params}")
-                print("Using default greenlist_params")
-    elif config.watermark_type.value == "AAR":
-        config.watermark_config.convolution_kernel = kernel if kernel is not None else config.watermark_config.convolution_kernel
-    else:
-        config.watermark_config.delta = delta if delta is not None else config.watermark_config.delta
-        config.watermark_config.convolution_kernel = kernel if kernel is not None else config.watermark_config.convolution_kernel
-        config.watermark_config.seeding_scheme = args.seeding_scheme if args.seeding_scheme is not None else config.watermark_config.seeding_scheme
     
     print(config.short_summary())
 
@@ -98,17 +115,19 @@ def main():
     evaluator = Evaluator(config=config.evaluation_config)
     
     if not args.disable_generation:   
-        print(f"Evaluating with watermark: {delta}, kernel: {kernel}, topk: {topk}")
+        delta_val = getattr(config.watermark_config, 'delta', None)
+        print(f"Evaluating with config: watermark_type={config.watermark_type.value}, delta={delta_val}")
         model, tokenizer = load_model(config.model_configuration, tokenizer_only=False)    
 
-        # Generation parametters
-        model.config.temperature = args.temperature if args.temperature is not None else model.config.temperature
+        # Generation parameters
+        if args.temperature is not None:
+            model.config.temperature = args.temperature
 
-        if delta==0:
+        if args.delta == 0:
             watermark = None
         else:
             watermark = load_watermark_from_config(config=config.watermark_config, tokenizer=tokenizer, watermark_type=config.watermark_type)
-        evaluator.evaluate_watermark(model,tokenizer,watermark, additional_info=additional_info)
+        evaluator.evaluate_watermark(model, tokenizer, watermark, additional_info=additional_info)
         
     if args.ppl:
         evaluator.evaluate_ppl()

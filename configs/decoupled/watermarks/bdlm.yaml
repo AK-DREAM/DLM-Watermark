@@ -1,0 +1,8 @@
+# BDLM 水印配置
+watermark_type: BDLM
+watermark_config:
+  delta: 2.0
+  gamma: 0.5
+  offset: 25
+  context_len: 25
+  topk: 40

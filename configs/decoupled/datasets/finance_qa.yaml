@@ -1,0 +1,8 @@
+# Finance QA 数据集配置
+evaluation_config:
+  evaluation_datasets:
+    - path: data/WaterBench/2-2_finance_qa.jsonl
+      user_prompt: "You are a helpful assistant, please answer the following question with financial knowledge within 300 words:\n{context}\n{input}"
+      chat: true
+      max_length: 150
+      min_length: 1
