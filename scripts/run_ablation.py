@@ -33,6 +33,7 @@ import random
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from tqdm import tqdm
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -161,11 +162,12 @@ EXPERIMENT_MATRIX: Dict[str, Dict[str, Any]] = {
         "watermark": "__multi__",
         "_watermark_list": [
             os.path.abspath(os.path.join(DECOUPLED_BASE, "watermarks", w))
-            for w in ["dlm.yaml", "bdlm.yaml", "unigram.yaml", "none.yaml"]
+            for w in ["dlm.yaml", "bdlm.yaml", "unigram.yaml", "none.yaml", "kth.yaml"]
         ],
         "dataset_layers": auto_discover(os.path.join(DECOUPLED_BASE, "datasets")),
         "sweep": {
-            "watermark_config.delta": [2],
+            "watermark_config.delta": [2, 3],
+            "model_configuration.remasking": ["random", "low_confidence"],
         },
         "coupled_overrides": {},
         "defaults": {"num_samples": 5},
@@ -181,6 +183,7 @@ EXPERIMENT_MATRIX: Dict[str, Dict[str, Any]] = {
         "dataset_layers": auto_discover(os.path.join(DECOUPLED_BASE, "datasets")),
         "sweep": {
             "watermark_config.delta": [1, 2, 2.5, 3, 4, 5],
+            "model_configuration.remasking": ["random", "low_confidence"],
         },
         "coupled_overrides": {},
         "defaults": {"num_samples": 200},
@@ -554,13 +557,18 @@ class GPUTaskScheduler:
 
         total = len(tasks)
         semaphore = asyncio.Semaphore(self.max_concurrent)
+        
+        pbar = tqdm(total=total, desc="Running tasks")
 
         async def limited_task(task, idx):
             async with semaphore:
                 await self.run_task(task, idx, total)
+                pbar.update(1)
 
         aws = [limited_task(task, i) for i, task in enumerate(tasks)]
         await asyncio.gather(*aws)
+
+        pbar.close()
 
         success = sum(1 for r in self.results if r["status"] == "success")
         failed = sum(1 for r in self.results if r["status"] != "success")
