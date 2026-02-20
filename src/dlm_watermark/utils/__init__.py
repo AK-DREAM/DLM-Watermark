@@ -5,6 +5,7 @@ from .file_io import (
     safe_append_jsonl,
     safe_write_df_json,
     safe_write_df_csv,
+    safe_patch_df_columns,
 )
 
 from .config_utils import (
@@ -24,6 +25,7 @@ __all__ = [
     "safe_append_jsonl",
     "safe_write_df_json",
     "safe_write_df_csv",
+    "safe_patch_df_columns",
     "deep_merge",
     "merge_yaml_files",
     "apply_overrides",

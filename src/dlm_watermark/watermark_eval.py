@@ -13,7 +13,7 @@ from .configs import EvaluationConfiguration, EvaluationDataset
 from .quality_evaluations.ppl import compute_ppl
 from .quality_evaluations.metrics import compute_seq_rep_n
 from .quality_evaluations.judge import get_gpt4_grades
-from .utils.file_io import file_lock, safe_append_jsonl, safe_write_df_json
+from .utils.file_io import file_lock, safe_append_jsonl, safe_write_df_json, safe_patch_df_columns
 
 
 def get_dataset(dataset_config: EvaluationDataset):
@@ -102,7 +102,6 @@ class Evaluator:
     def _evaluate_on_dataset(self, model: DiffusionLM, tokenizer, watermark, dataset, dataset_name):
                 
         res = []
-        
         device = model.device
         
         dataset = dataset.with_format("torch")
@@ -111,23 +110,39 @@ class Evaluator:
             batch_size=self.config.batch_size,
         )
         
-        total = self.config.num_samples // self.config.batch_size
-        total = total - self.skip_if_exists(dataset_name)
+        target_samples = self.config.num_samples
+        target_batches = target_samples // self.config.batch_size
 
-        if total <= 0:
+        # 原子性检查：在锁内读取已有行数，避免 TOCTOU 竞态
+        with file_lock(self.config.save_path):
+            existing = self.skip_if_exists(dataset_name)
+
+        if existing >= target_samples:
             print(f"Skipping evaluation for {dataset_name} as results already exist.")
             return []
-        
-        for i, row in enumerate(
-            tqdm(
-                dataloader,
-                desc=f"Evaluating on {dataset_name}",
-                total=total,
-                disable=not self.config.tqdm,
-            )
-        ):
-            if i >= total:
+
+        pbar = tqdm(
+            total=target_samples,
+            initial=existing,
+            desc=f"Evaluating on {dataset_name}",
+            disable=not self.config.tqdm,
+        )
+
+        print(f"Saving results to: {os.path.abspath(self.config.save_path)}")
+        generated_count = 0
+        for i, row in enumerate(dataloader):
+            # 每个 batch 开始前，原子性检查最新已有行数
+            with file_lock(self.config.save_path):
+                existing = self.skip_if_exists(dataset_name)
+            
+            if existing >= target_samples:
                 break
+            
+            if i >= target_batches:
+                break
+
+            pbar.n = existing
+            pbar.refresh()
 
             input_ids = row["input_ids"].to(device)
             attention_mask = row.get("attention_mask", None)
@@ -169,6 +184,7 @@ class Evaluator:
                 completion, return_tensors="pt", padding=True
             )["input_ids"]
 
+            batch_res = []
             for batch_idx in range(len(input_ids)):   
                 
                 if watermark is None:
@@ -186,7 +202,18 @@ class Evaluator:
                     "length": len(encoded_completion[batch_idx]), 
                 })
                 
-                res.append(line)
+                batch_res.append(line)
+            
+            # 立即保存本 batch 的结果（save_results 内部持有文件锁）
+            self.save_results(batch_res)
+            res.extend(batch_res)
+            generated_count += len(batch_res)
+
+        pbar.n = existing + generated_count
+        pbar.refresh()
+        pbar.close()
+
+        print(f"Saved {generated_count} results to: {os.path.abspath(self.config.save_path)}")
                 
         return res
 
@@ -200,7 +227,6 @@ class Evaluator:
             pass
         # 使用文件锁安全追加写入，防止多进程并发冲突
         safe_append_jsonl(save_path, results, transform_fn=self.add_information)
-        print(f"Results saved to: {os.path.abspath(save_path)}")
                 
     def skip_if_exists(self, dataset_name):
         if not self.config.skip_if_exists:
@@ -279,7 +305,6 @@ class Evaluator:
             if len(res) == 0:
                 print(f"No (new) results for dataset {dataset_name}. Skipping.")
                 continue
-            self.save_results(res)
             
     def load_data_from_path(self):
         
@@ -292,30 +317,45 @@ class Evaluator:
 
     def evaluate_ppl(self):
         
-        # 使用文件锁保护整个读-改-写过程
+        # 使用文件锁保护读取阶段，获取需要计算的行索引和数据
+        # 同时写入哨兵值标记这些行正在计算中，防止并发重复计算
         with file_lock(self.config.save_path):
             df = self.load_data_from_path()
             
-            mask = [True] * len(df)
+            mask = pd.Series([True] * len(df))
             if self.config.skip_if_exists:
                 if "ppl" in df.columns:
-                    if not df["ppl"].isnull().any():
+                    # 跳过已有值和正在计算中（哨兵值）的行
+                    mask = df["ppl"].isnull()
+                    if not mask.any():
                         print("PPL already evaluated. Skipping.")
                         return
-                    else:
-                        mask = df["ppl"].isnull()
-            masked_df = df[mask].copy()
-
-            prompts = masked_df["prompt"].tolist()
-            completions = masked_df["completion"].tolist()
+            
+            row_indices = df.index[mask].tolist()
+            prompts = df.loc[row_indices, "prompt"].tolist()
+            completions = df.loc[row_indices, "completion"].tolist()
+            
+            # 写入哨兵值标记为"正在计算"，防止其他进程重复计算同样的行
+            if "ppl" not in df.columns:
+                df["ppl"] = pd.NA
+            df.loc[row_indices, "ppl"] = -1.0  # 哨兵值
+            df.to_json(self.config.save_path, lines=True, orient="records")
         
-        ppls = self._evaluate_ppl(prompts, completions)
-        masked_df["ppl"] = ppls
+        # 耗时计算在锁外进行，如果失败则清除哨兵值
+        try:
+            ppls = self._evaluate_ppl(prompts, completions)
+        except Exception as e:
+            # 清除哨兵值，将 ppl 列恢复为 NA，允许后续重试
+            print(f"PPL evaluation failed: {e}. Clearing sentinel values.")
+            safe_patch_df_columns(
+                self.config.save_path,
+                {"ppl": [pd.NA] * len(row_indices)},
+                row_indices=row_indices,
+            )
+            raise
 
-        if "ppl" not in df.columns:
-            df["ppl"] = pd.NA             
-        df.update(masked_df)
-        safe_write_df_json(self.config.save_path, df)
+        # 写入时重新读取最新文件，只更新 ppl 列，避免覆盖并发修改
+        safe_patch_df_columns(self.config.save_path, {"ppl": ppls}, row_indices=row_indices)
 
     def _evaluate_ppl(self, prompts, completions):
         return compute_ppl(
@@ -329,26 +369,32 @@ class Evaluator:
         
         with file_lock(self.config.save_path):
             df = self.load_data_from_path()
-            completions = df["completion"].tolist()
+            row_indices = df.index.tolist()
+            completions = df.loc[row_indices, "completion"].tolist()
         
+        # 耗时计算在锁外进行
+        columns_to_patch = {}
         n_grams = [1,2,3]
         for n in n_grams:
             seq_rep_n = compute_seq_rep_n(completions, tokenizer, n=n)
-            df[f"seq_rep_{n}"] = seq_rep_n
+            columns_to_patch[f"seq_rep_{n}"] = seq_rep_n
 
-        safe_write_df_json(self.config.save_path, df)
+        # 写入时重新读取最新文件，使用显式 row_indices 避免行数不匹配
+        safe_patch_df_columns(self.config.save_path, columns_to_patch, row_indices=row_indices)
         
     def evaluate_watermark_detection(self, tokenizer, watermark):
         
         with file_lock(self.config.save_path):
             df = self.load_data_from_path()
-            completions = df["completion"].tolist()
+            row_indices = df.index.tolist()
+            completions = df.loc[row_indices, "completion"].tolist()
         
         device = watermark.device
         
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
         
+        # 耗时计算在锁外进行
         results = []
         for completion in tqdm(completions, desc="Evaluating watermark detection", disable=not self.config.tqdm):
 
@@ -359,25 +405,25 @@ class Evaluator:
             results.append(detection_output)
             
         res_df = pd.DataFrame(results)
-        res_df_columns = res_df.columns.tolist()
         
-        for col in res_df_columns:
-            df[col] = res_df[col].tolist()
-
-        safe_write_df_json(self.config.save_path, df)
+        # 写入时重新读取最新文件，使用显式 row_indices 避免行数不匹配
+        columns_to_patch = {col: res_df[col].tolist() for col in res_df.columns}
+        safe_patch_df_columns(self.config.save_path, columns_to_patch, row_indices=row_indices)
 
     def evaluate_gpt4_judge(self):
         
         with file_lock(self.config.save_path):
             df = self.load_data_from_path()
+            
+            if "gpt4_judge" in df.columns and not df["gpt4_judge"].isnull().all():
+                print("GPT-4 evaluation already exists. Skipping.")
+                return
+            
+            row_indices = df.index.tolist()
+            prompts = df.loc[row_indices, "prompt"].tolist()
+            completions = df.loc[row_indices, "completion"].tolist()
         
-        if "gpt4_judge" in df.columns and not df["gpt4_judge"].isnull().all():
-            print("GPT-4 evaluation already exists. Skipping.")
-            return
-        
-        prompts = df["prompt"].tolist()
-        completions = df["completion"].tolist()
-        
+        # 耗时计算在锁外进行
         gpt4_scores = get_gpt4_grades(prompts, completions, is_completion_task=True)
         scores = []
         explanations = []
@@ -399,7 +445,6 @@ class Evaluator:
             comb_score /= max(ctr, 1.0)
 
             scores.append(comb_score)
-            
-        df["gpt4_judge"] = scores
-
-        safe_write_df_json(self.config.save_path, df)
+        
+        # 写入时重新读取最新文件，使用显式 row_indices 避免行数不匹配
+        safe_patch_df_columns(self.config.save_path, {"gpt4_judge": scores}, row_indices=row_indices)

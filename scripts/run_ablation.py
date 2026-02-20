@@ -29,6 +29,7 @@ import os
 import re
 import subprocess
 import sys
+import random
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -168,6 +169,21 @@ EXPERIMENT_MATRIX: Dict[str, Dict[str, Any]] = {
         },
         "coupled_overrides": {},
         "defaults": {"num_samples": 5},
+    },
+
+    "delta_sweep": {
+        "model_layers": [os.path.abspath(os.path.join(DECOUPLED_BASE, "models", "llada_8b.yaml"))],
+        "watermark": "__multi__",
+        "_watermark_list": [
+            os.path.abspath(os.path.join(DECOUPLED_BASE, "watermarks", w))
+            for w in ["dlm.yaml", "bdlm.yaml", "unigram.yaml", "none.yaml","kth.yaml"]
+        ],
+        "dataset_layers": auto_discover(os.path.join(DECOUPLED_BASE, "datasets")),
+        "sweep": {
+            "watermark_config.delta": [1, 2, 2.5, 3, 4, 5],
+        },
+        "coupled_overrides": {},
+        "defaults": {"num_samples": 200},
     }
 }
 
@@ -326,22 +342,22 @@ def generate_experiment_tasks(
 
     sweep_combos = _cartesian_sweep(sweep)
 
-    for model_layer in model_layers:
-        for watermark_path in watermark_list:
-            for dataset_layer in dataset_layers:
-                for sweep_combo in sweep_combos:
-                    overrides = []
-                    for key, val in sweep_combo.items():
-                        overrides.append(f"{key}={val}")
-                        # 应用耦合规则
-                        if key in coupled:
-                            for coupled_key in coupled[key]:
-                                overrides.append(f"{coupled_key}={val}")
-
-                    # 添加默认覆盖
-                    if "num_samples" in defaults:
-                        overrides.append(f"evaluation_config.num_samples={defaults['num_samples']}")
-
+    for sweep_combo in sweep_combos:
+        overrides = []
+        for key, val in sweep_combo.items():
+            overrides.append(f"{key}={val}")
+            # 应用耦合规则
+            if key in coupled:
+                for coupled_key in coupled[key]:
+                    overrides.append(f"{coupled_key}={val}")
+        
+        # 添加默认覆盖
+        if "num_samples" in defaults:
+            overrides.append(f"evaluation_config.num_samples={defaults['num_samples']}")
+        
+        for model_layer in model_layers:
+            for watermark_path in watermark_list:
+                for dataset_layer in dataset_layers:                
                     tasks.append(AblationTask(
                         layers=[model_layer, watermark_path, dataset_layer],
                         overrides=overrides,

@@ -102,6 +102,32 @@ def safe_write_df_json(filepath: str, df: pd.DataFrame):
         df.to_json(filepath, lines=True, orient="records")
 
 
+def safe_patch_df_columns(filepath: str, columns: dict, row_indices=None):
+    """
+    原子性地对 .jsonl 文件进行列级更新（重新读取 + 局部写入），
+    避免在长时间计算期间丢失其他进程的并发修改。
+
+    Args:
+        filepath: 目标 .jsonl 文件路径
+        columns: 字典，key 为列名，value 为要写入的值列表
+        row_indices: 可选，要更新的行索引列表。
+                     如果为 None，则要求 values 长度与文件行数一致，全量更新。
+    """
+    with file_lock(filepath):
+        df = pd.read_json(filepath, lines=True)
+
+        for col_name, col_values in columns.items():
+            if col_name not in df.columns:
+                df[col_name] = pd.NA
+
+            if row_indices is not None:
+                df.loc[row_indices, col_name] = col_values
+            else:
+                df[col_name] = col_values
+
+        df.to_json(filepath, lines=True, orient="records")
+
+
 def safe_write_df_csv(filepath: str, df: pd.DataFrame, **kwargs):
     """
     安全地将 DataFrame 写入 .csv 文件（带文件锁）。
