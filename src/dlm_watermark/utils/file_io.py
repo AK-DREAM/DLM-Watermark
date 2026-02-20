@@ -13,7 +13,7 @@ import pandas as pd
 from pathlib import Path
 
 
-def get_output_base_dir(fallback: str = ".") -> str:
+def get_output_base_dir(fallback: str = "./output") -> str:
     """
     从环境变量 WATERMARK_OUTPUT_BASE_DIR 获取输出根目录。
     如果未设置则使用 fallback（默认为当前目录）。
@@ -21,7 +21,7 @@ def get_output_base_dir(fallback: str = ".") -> str:
     return os.environ.get("WATERMARK_OUTPUT_BASE_DIR", fallback)
 
 
-def resolve_output_path(relative_path: str, fallback_base: str = ".") -> str:
+def resolve_output_path(relative_path: str, fallback_base: str = "./output") -> str:
     """
     将相对路径与 WATERMARK_OUTPUT_BASE_DIR 拼接。
     例如: relative_path="output/exp1/results.jsonl"

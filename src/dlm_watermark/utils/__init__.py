@@ -15,6 +15,8 @@ from .config_utils import (
     load_config,
 )
 
+from .utils import *
+
 __all__ = [
     "get_output_base_dir",
     "resolve_output_path",
@@ -27,4 +29,7 @@ __all__ = [
     "apply_overrides",
     "auto_discover",
     "load_config",
+    "batched_multi_fft_convolution_idx",
+    "compute_prob_of_min",
+    "offset_unfold",
 ]

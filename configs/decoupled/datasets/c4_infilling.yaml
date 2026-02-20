@@ -1,7 +1,0 @@
-# C4 Infilling 数据集配置（用于 DreamOn 等 infilling 任务）
-evaluation_config:
-  evaluation_datasets:
-    - path: data/infilling/c4_infilling.jsonl
-      chat: false
-      max_length: 400
-      min_length: 1

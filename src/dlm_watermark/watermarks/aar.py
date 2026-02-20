@@ -43,6 +43,7 @@ class AARWatermark(Watermark):
     def get_key_params(self):
         out = {
             "convolution_kernel": self.convolution_kernel.tolist(),
+            "watermark_type": "AAR",
         }
         return out
 

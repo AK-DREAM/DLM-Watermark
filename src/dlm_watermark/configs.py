@@ -245,6 +245,8 @@ class EvaluationConfiguration(BaseModel):
         """
         print(f"Num Samples: {self.num_samples}")
         print(f"Save Path: {self.save_path}")
+        print(f"Skip If Exists: {self.skip_if_exists}")
+        print(f"Tqdm: {self.tqdm}")
         print("Evaluation Dataset:")
         for dataset in self.evaluation_datasets:
             dataset.short_summary()

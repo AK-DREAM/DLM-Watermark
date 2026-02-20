@@ -99,9 +99,12 @@ def main():
     # 设置输出路径
     if args.name:
         if args.delta == 0:
-            config.evaluation_config.save_path = resolve_output_path(f"output/{args.name}/watermark_ablation_no_watermark.jsonl")
+            config.evaluation_config.save_path = resolve_output_path(f"{args.name}/watermark_ablation_no_watermark.jsonl")
         else:
-            config.evaluation_config.save_path = resolve_output_path(f"output/{args.name}/watermark_ablation.jsonl")
+            config.evaluation_config.save_path = resolve_output_path(f"{args.name}/watermark_ablation.jsonl")
+    else:
+        # Always resolve the save path (even without --name) so the full path is visible in logs
+        config.evaluation_config.save_path = resolve_output_path(config.evaluation_config.save_path)
     
     if config.watermark_type.value == "None":
         print("No watermark type specified -- evaluating without watermark.")

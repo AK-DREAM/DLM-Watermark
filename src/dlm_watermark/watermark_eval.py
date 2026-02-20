@@ -200,6 +200,7 @@ class Evaluator:
             pass
         # 使用文件锁安全追加写入，防止多进程并发冲突
         safe_append_jsonl(save_path, results, transform_fn=self.add_information)
+        print(f"Results saved to: {os.path.abspath(save_path)}")
                 
     def skip_if_exists(self, dataset_name):
         if not self.config.skip_if_exists:

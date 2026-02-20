@@ -81,6 +81,7 @@ class OrderAgnosticWatermark(Watermark):
             "transition_matrix": self.transition_matrix.detach().cpu().numpy().tolist(),
             "initial_state": self.initial_state.detach().cpu().numpy().tolist(),
             "delta": self.delta,
+            "watermark_type": "OrderAgnostic",
         }
 
 

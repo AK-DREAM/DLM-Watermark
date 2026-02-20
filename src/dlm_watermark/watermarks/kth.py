@@ -56,6 +56,7 @@ class KTHWatermark(Watermark):
         params = {
             "seed": self.seed,
             "key_len": self.key_len,
+            "watermark_type": "KTH",
         }
         return params
 

@@ -26,15 +26,22 @@ import asyncio
 import glob
 import itertools
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 
 # ═══════════════════════════════════════════════════════════════
 #  配置发现
 # ═══════════════════════════════════════════════════════════════
+
+def _sanitize_filename(s: str) -> str:
+    """Replace characters that are not safe for filenames."""
+    return re.sub(r'[^\w\-.]', '_', s)
+
 
 DECOUPLED_BASE = os.path.join(os.path.dirname(__file__), "..", "configs", "decoupled")
 
@@ -153,14 +160,14 @@ EXPERIMENT_MATRIX: Dict[str, Dict[str, Any]] = {
         "watermark": "__multi__",
         "_watermark_list": [
             os.path.abspath(os.path.join(DECOUPLED_BASE, "watermarks", w))
-            for w in ["dlm.yaml", "bdlm.yaml", "unigram.yaml"]
+            for w in ["dlm.yaml", "bdlm.yaml", "unigram.yaml", "none.yaml"]
         ],
         "dataset_layers": auto_discover(os.path.join(DECOUPLED_BASE, "datasets")),
         "sweep": {
             "watermark_config.delta": [2],
         },
         "coupled_overrides": {},
-        "defaults": {"num_samples": 200},
+        "defaults": {"num_samples": 5},
     }
 }
 
@@ -233,7 +240,7 @@ class AblationTask:
             ]
             for ov in self.overrides:
                 cmd.extend(["--override", ov])
-            cmd.extend(["--num_samples", str(self.num_samples)])
+            cmd.extend(["--ppl"])
             return cmd
         else:
             # 旧版命令
@@ -245,7 +252,7 @@ class AblationTask:
                 "--config", self.config,
                 "--name", self.name,
                 "--seeding_scheme", self.seeding_scheme,
-                "--num_samples", str(self.num_samples),
+                "--ppl",
             ]
             cmd.extend(self.extra_args)
             return cmd
@@ -405,15 +412,60 @@ class GPUTaskScheduler:
     维护一个GPU可用信号量，将任务队列中的任务分配到空闲GPU上执行。
     """
 
-    def __init__(self, gpus: List[int], max_concurrent: Optional[int] = None):
+    def __init__(self, gpus: List[int], max_concurrent: Optional[int] = None,
+                 log_dir: Optional[str] = None, verbose: bool = False):
         self.gpus = gpus
         self.max_concurrent = max_concurrent or len(gpus)
         self.gpu_queue: asyncio.Queue = asyncio.Queue()
         self.results: List[dict] = []
+        self.verbose = verbose
+        # Append a timestamp to the log directory so different runs don't mix
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_log_dir = log_dir or os.path.join("logs", "ablation")
+        self.log_dir = os.path.join(base_log_dir, timestamp)
 
     async def initialize(self):
+        os.makedirs(self.log_dir, exist_ok=True)
         for gpu_id in self.gpus:
             await self.gpu_queue.put(gpu_id)
+
+    async def _stream_and_collect(self, stream, prefix: str, collector: list, log_file):
+        """Read lines from an async stream, optionally print them, and write to log file.
+
+        tqdm writes progress bars to stderr using '\r' (carriage return) rather
+        than '\n', so the default ``async for line in stream`` (which splits on
+        '\n' only) would buffer all tqdm output until the bar finishes.  We
+        instead read raw chunks and split on both '\r' and '\n' so that each
+        tqdm update is captured and flushed immediately.
+        """
+        buf = b""
+        while True:
+            chunk = await stream.read(8192)
+            if not chunk:
+                break
+            buf += chunk
+            # Split on \r or \n (keep the delimiter so we can reproduce the
+            # original output faithfully).
+            parts = re.split(rb'(\r\n|\r|\n)', buf)
+            # The last element is the incomplete trailing fragment – keep it in
+            # the buffer for the next iteration.
+            buf = parts[-1]
+            # Process complete segments (text, delimiter, text, delimiter, ...)
+            for segment in parts[:-1]:
+                decoded = segment.decode(errors="replace")
+                collector.append(decoded)
+                log_file.write(decoded)
+                log_file.flush()
+                if self.verbose:
+                    print(f"  {prefix} | {decoded}", end="", flush=True)
+        # Flush any remaining bytes in the buffer
+        if buf:
+            decoded = buf.decode(errors="replace")
+            collector.append(decoded)
+            log_file.write(decoded)
+            log_file.flush()
+            if self.verbose:
+                print(f"  {prefix} | {decoded}", end="", flush=True)
 
     async def run_task(self, task: AblationTask, task_idx: int, total: int):
         gpu_id = await self.gpu_queue.get()
@@ -422,11 +474,17 @@ class GPUTaskScheduler:
             cmd = task.to_cmd()
             env = os.environ.copy()
             env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+            env["PYTHONUNBUFFERED"] = "1"
 
             old_pypath = env.get("PYTHONPATH", "")
             env["PYTHONPATH"] = f"src{os.pathsep}{old_pypath}" if old_pypath else "src"
 
             print(f"🚀 [{task_idx + 1}/{total}] GPU {gpu_id}: {task}")
+
+            # Prepare per-task log file
+            label = _sanitize_filename(task.short_label())
+            log_filename = f"task_{task_idx + 1:04d}_gpu{gpu_id}_{label}.log"
+            log_path = os.path.join(self.log_dir, log_filename)
 
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -435,16 +493,38 @@ class GPUTaskScheduler:
                 stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, stderr = await process.communicate()
+            stdout_lines: list = []
+            stderr_lines: list = []
+
+            with open(log_path, "w", encoding="utf-8") as log_file:
+                log_file.write(f"# Task: {task}\n")
+                log_file.write(f"# Command: {' '.join(cmd)}\n")
+                log_file.write(f"# GPU: {gpu_id}\n")
+                log_file.write(f"# Started: {datetime.now().isoformat()}\n")
+                log_file.write("=" * 80 + "\n\n")
+
+                task_prefix = f"[{task_idx + 1}/{total}] GPU {gpu_id}"
+
+                await asyncio.gather(
+                    self._stream_and_collect(process.stdout, f"{task_prefix} OUT", stdout_lines, log_file),
+                    self._stream_and_collect(process.stderr, f"{task_prefix} ERR", stderr_lines, log_file),
+                )
+
+                await process.wait()
+
+                log_file.write(f"\n{'=' * 80}\n")
+                log_file.write(f"# Finished: {datetime.now().isoformat()}\n")
+                log_file.write(f"# Return code: {process.returncode}\n")
 
             if process.returncode == 0:
-                print(f"✅ [{task_idx + 1}/{total}] GPU {gpu_id}: {task} 完成")
-                self.results.append({"task": str(task), "gpu": gpu_id, "status": "success"})
+                print(f"✅ [{task_idx + 1}/{total}] GPU {gpu_id}: {task} 完成  📄 {log_path}")
+                self.results.append({"task": str(task), "gpu": gpu_id, "status": "success", "log": log_path})
             else:
-                print(f"❌ [{task_idx + 1}/{total}] GPU {gpu_id}: {task} 失败 (code={process.returncode})")
-                if stderr:
-                    print(f"   stderr: {stderr.decode()[-500:]}")
-                self.results.append({"task": str(task), "gpu": gpu_id, "status": "failed", "returncode": process.returncode})
+                print(f"❌ [{task_idx + 1}/{total}] GPU {gpu_id}: {task} 失败 (code={process.returncode})  📄 {log_path}")
+                stderr_text = "".join(stderr_lines)
+                if stderr_text:
+                    print(f"   stderr (last 500 chars): {stderr_text[-500:]}")
+                self.results.append({"task": str(task), "gpu": gpu_id, "status": "failed", "returncode": process.returncode, "log": log_path})
 
         except Exception as e:
             print(f"❌ [{task_idx + 1}/{total}] GPU {gpu_id}: {task} 异常: {e}")
@@ -477,6 +557,8 @@ class GPUTaskScheduler:
             for r in self.results:
                 if r["status"] != "success":
                     print(f"   {r['task']}")
+                    if "log" in r:
+                        print(f"     📄 Log: {r['log']}")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -525,6 +607,10 @@ def parse_args():
     parser.add_argument("--gpus", type=str, default=None, help="要使用的GPU编号，逗号分隔（如 '0,1,2,3'）。默认自动检测。")
     parser.add_argument("--max_concurrent", type=int, default=None, help="最大并发任务数（默认等于GPU数量）")
     parser.add_argument("--dry_run", action="store_true", help="仅打印任务列表，不实际执行")
+    parser.add_argument("--log_dir", type=str, default=None,
+                        help="日志输出基础目录（默认 logs/ablation）。每次运行会创建带时间戳的子目录。")
+    parser.add_argument("--verbose", action="store_true",
+                        help="实时将子进程输出流式打印到终端（默认仅写入日志文件）")
 
     return parser.parse_args()
 
@@ -586,7 +672,9 @@ def main():
             print(f"    cmd: {' '.join(task.to_cmd())}")
         return
 
-    scheduler = GPUTaskScheduler(gpus, max_concurrent=args.max_concurrent)
+    scheduler = GPUTaskScheduler(gpus, max_concurrent=args.max_concurrent,
+                                 log_dir=args.log_dir, verbose=args.verbose)
+    print(f"📂 日志目录: {scheduler.log_dir}")
     asyncio.run(scheduler.run_all(tasks))
 
 

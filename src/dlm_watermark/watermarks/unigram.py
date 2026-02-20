@@ -36,6 +36,7 @@ class UnigramWatermark(Watermark):
             "seed": self.seed,
             "delta": self.delta,
             "gamma": self.gamma,
+            "watermark_type": "Unigram",
         }
     
     def watermark_logits(self, input_ids: torch.LongTensor, logits: torch.FloatTensor):
